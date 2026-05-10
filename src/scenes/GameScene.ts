@@ -111,6 +111,11 @@ export class GameScene extends Phaser.Scene {
     this.lastFireAt = 0;
     this.playerAngle = -Math.PI / 2;
     this.nextExtraLifeAt = FIRST_EXTRA_LIFE;
+    this.mothership = null;
+    this.mothershipSpawned = false;
+    this.mothershipDefeated = false;
+    this.transitioning = false;
+    this.kills = 0;
 
     // Build clouds (re-tinted per era).
     this.clouds = [];
@@ -229,6 +234,7 @@ export class GameScene extends Phaser.Scene {
     this.loop = loop;
     this.era = eraForLoop(index, loop);
     this.kills = 0;
+    this.mothership = null;
     this.mothershipSpawned = false;
     this.mothershipDefeated = false;
     this.transitioning = false;
@@ -265,7 +271,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private advanceEra(): void {
+    if (this.transitioning) return;
     this.transitioning = true;
+    // Stop spawning during the transition.
+    this.spawnTimer?.remove(false);
     // Clear any leftover enemies / bullets / pilots from this era.
     this.enemies.clear(true, true);
     this.enemyBullets.clear(true, true);
@@ -375,13 +384,55 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Mothership: cruises across the screen, fires periodic spread.
-    if (this.mothership && this.mothership.active) {
+    // Self-heal a/v in case some Phaser internal flips them — we own its life
+    // cycle via hp + the local `mothership` reference.
+    if (this.mothership && this.mothership.hp > 0) {
       const m = this.mothership;
-      m.x += (m.cruiseVx + vx) * dt;
-      m.y += (m.cruiseVy + vy) * dt;
-      // Bounce gently off opposite edge to keep it on-screen for a while.
-      if (m.x < -m.width / 2 || m.x > GAME_WIDTH + m.width / 2) m.cruiseVx *= -1;
-      if (m.y < -m.height / 2 || m.y > GAME_HEIGHT + m.height / 2) m.cruiseVy *= -1;
+      if (!m.active) m.setActive(true);
+      if (!m.visible) m.setVisible(true);
+      const body = m.body as Phaser.Physics.Arcade.Body | null;
+      if (body && !body.enable) body.enable = true;
+      m.x += m.cruiseVx * dt;
+      m.y += m.cruiseVy * dt;
+      // Bounce off the screen edges, with a hard clamp so it never escapes.
+      const halfW = m.width / 2;
+      const halfH = m.height / 2;
+      if (m.x < halfW) {
+        m.x = halfW;
+        m.cruiseVx = Math.abs(m.cruiseVx);
+      } else if (m.x > GAME_WIDTH - halfW) {
+        m.x = GAME_WIDTH - halfW;
+        m.cruiseVx = -Math.abs(m.cruiseVx);
+      }
+      if (m.y < halfH) {
+        m.y = halfH;
+        m.cruiseVy = Math.abs(m.cruiseVy);
+      } else if (m.y > GAME_HEIGHT - halfH) {
+        m.y = GAME_HEIGHT - halfH;
+        m.cruiseVy = -Math.abs(m.cruiseVy);
+      }
+      // Manual collision: bullets vs mothership (radius-based).
+      const hitR = Math.min(m.width, m.height) / 2 - 2;
+      const hitR2 = hitR * hitR;
+      this.bullets.getChildren().forEach((obj) => {
+        const b = obj as Bullet;
+        if (!b.active) return;
+        const dx = b.x - m.x;
+        const dy = b.y - m.y;
+        if (dx * dx + dy * dy <= hitR2) {
+          this.onBulletHitMother(b);
+        }
+      });
+      // Manual collision: player body vs mothership.
+      if (this.time.now >= this.invulnUntil) {
+        const pdx = this.player.x - m.x;
+        const pdy = this.player.y - m.y;
+        const playerR = 7;
+        const combinedR = hitR + playerR;
+        if (pdx * pdx + pdy * pdy <= combinedR * combinedR) {
+          this.onPlayerHit(m);
+        }
+      }
       // Fire spread shots.
       if (now - m.lastShotAt > 1400) {
         const baseAngle = Phaser.Math.Angle.Between(m.x, m.y, this.player.x, this.player.y);
@@ -457,18 +508,21 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => warn.destroy(),
     });
 
-    // Spawn the mothership from the top moving down-right.
-    const m = this.physics.add.image(GAME_WIDTH / 2, -32, this.era.motherKey) as MothershipSprite;
+    // Spawn the mothership near the top of the screen, cruising sideways.
+    const m = this.physics.add.image(GAME_WIDTH / 2, 28, this.era.motherKey) as MothershipSprite;
     m.hp = this.era.motherHp;
     m.cruiseVx = this.era.motherSpeed * (Math.random() < 0.5 ? -1 : 1);
-    m.cruiseVy = this.era.motherSpeed * 0.3;
+    m.cruiseVy = this.era.motherSpeed * 0.25;
     m.lastShotAt = this.time.now + 600;
     m.setDepth(45);
     (m.body as Phaser.Physics.Arcade.Body).setCircle(Math.min(m.width, m.height) / 2 - 2, 2, 2);
     this.mothership = m;
 
-    this.physics.add.overlap(this.bullets, m, (b) => this.onBulletHitMother(b as Bullet));
-    this.physics.add.overlap(this.player, m, () => this.onPlayerHit(m));
+    // NOTE: We deliberately do NOT use this.physics.add.overlap for the
+    // mothership. Phaser's physics engine occasionally flips the body's
+    // active/visible flags during steps, which broke the overlap callback
+    // and made the boss invincible. We handle bullet/player collision with
+    // a simple manual circle-vs-point check in update() instead.
   }
 
   private spawnPilot(x: number, y: number): void {
@@ -507,6 +561,8 @@ export class GameScene extends Phaser.Scene {
   // ---------- Hit handlers ----------
 
   private onBulletHitEnemy(b: Bullet, e: EnemySprite): void {
+    if (!b.active || !e.active) return;
+    b.setActive(false).setVisible(false);
     const ex = e.x;
     const ey = e.y;
     this.spawnExplosion(ex, ey);
@@ -522,7 +578,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onBulletHitMother(b: Bullet): void {
-    if (!this.mothership || !this.mothership.active) return;
+    // A single bullet can produce multiple overlap callbacks within the same
+    // frame (Phaser checks AABBs per step but doesn't deactivate immediately
+    // on b.destroy()). Guard so each bullet only counts once.
+    if (!b.active) return;
+    if (!this.mothership || this.mothership.hp <= 0) return;
+    b.setActive(false).setVisible(false);
     b.destroy();
     this.spawnExplosion(
       this.mothership.x + Phaser.Math.Between(-this.mothership.width / 3, this.mothership.width / 3),
