@@ -1,8 +1,11 @@
 // Minimal offline-first service worker.
-// Strategy: cache-first for the app shell, network-first for /api/*.
+// - HTML navigations: network-first so users always get the latest deploy
+//   (avoids stale index.html pointing at deleted hashed JS bundles).
+// - Hashed assets, icons, manifest: cache-first.
+// - /api/*: never intercept (always go to network for live leaderboard).
 
-const VERSION = 'tp-v1';
-const SHELL = ['/', '/index.html', '/manifest.webmanifest'];
+const VERSION = 'tp-v2';
+const SHELL = ['/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -26,10 +29,31 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
 
-  // Never intercept API calls — always go to network so leaderboard is live.
+  // Never intercept API calls.
   if (url.pathname.startsWith('/api/')) return;
 
-  // Cache-first for everything else (app shell, JS bundle, icons).
+  // Network-first for HTML page navigations: ensures new deploys load.
+  const isHtml =
+    req.mode === 'navigate' ||
+    req.destination === 'document' ||
+    (req.headers.get('accept') || '').includes('text/html');
+
+  if (isHtml) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.status === 200) {
+            const copy = res.clone();
+            caches.open(VERSION).then((cache) => cache.put(req, copy)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((c) => c || new Response('Offline', { status: 503 })))
+    );
+    return;
+  }
+
+  // Cache-first for hashed assets, icons, manifest, etc.
   event.respondWith(
     caches.match(req).then((cached) => {
       if (cached) return cached;
