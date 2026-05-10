@@ -46,9 +46,41 @@
     <script type="module" src="/src/main.ts"></script>
     <script>
       // Register service worker for offline play (production only).
+      // Auto-update strategy:
+      //  - Check for new SW on load and every 60s while the tab is open.
+      //  - When a new SW takes control (controllerchange), reload the page once
+      //    so mobile users get the new build without manually clearing data.
       if ('serviceWorker' in navigator && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        let reloading = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (reloading) return;
+          reloading = true;
+          location.reload();
+        });
+
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
+          navigator.serviceWorker.register('/sw.js').then((reg) => {
+            // Tell any waiting SW to activate immediately.
+            const activateWaiting = () => {
+              if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            };
+            activateWaiting();
+            reg.addEventListener('updatefound', () => {
+              const nw = reg.installing;
+              if (!nw) return;
+              nw.addEventListener('statechange', () => {
+                if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+                  // New version installed alongside an old controller -> activate it.
+                  activateWaiting();
+                }
+              });
+            });
+            // Poll for updates while the tab is open (helps installed PWAs).
+            setInterval(() => reg.update().catch(() => {}), 60000);
+            document.addEventListener('visibilitychange', () => {
+              if (document.visibilityState === 'visible') reg.update().catch(() => {});
+            });
+          }).catch(() => {});
         });
       }
     </script>

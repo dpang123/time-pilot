@@ -4,7 +4,7 @@
 // - Hashed assets, icons, manifest: cache-first.
 // - /api/*: never intercept (always go to network for live leaderboard).
 
-const VERSION = 'tp-v2';
+const VERSION = 'tp-v3';
 const SHELL = ['/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -21,6 +21,11 @@ self.addEventListener('activate', (event) => {
     )
   );
   self.clients.claim();
+});
+
+// Allow the page to trigger immediate activation of a waiting SW.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('fetch', (event) => {
