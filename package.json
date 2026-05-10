@@ -1,0 +1,21 @@
+{
+  "name": "time-pilot",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vercel/kv": "^2.0.0",
+    "phaser": "^3.80.1"
+  },
+  "devDependencies": {
+    "@vercel/node": "^3.2.0",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11"
+  }
+}

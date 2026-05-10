@@ -1,0 +1,19 @@
+{
+  "name": "Time Pilot",
+  "short_name": "Time Pilot",
+  "description": "Arcade-style multidirectional shooter across five time eras.",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

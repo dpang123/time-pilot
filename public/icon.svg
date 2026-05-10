@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" shape-rendering="crispEdges">
+  <rect width="512" height="512" fill="#000"/>
+  <!-- Stars -->
+  <g fill="#fff">
+    <rect x="64"  y="80"  width="8" height="8"/>
+    <rect x="420" y="120" width="8" height="8"/>
+    <rect x="120" y="380" width="8" height="8"/>
+    <rect x="380" y="420" width="8" height="8"/>
+    <rect x="60"  y="260" width="8" height="8"/>
+    <rect x="450" y="320" width="8" height="8"/>
+  </g>
+  <!-- Player jet (top-down, facing up), big pixelly -->
+  <g transform="translate(176,144)" fill="#88ccff">
+    <!-- nose -->
+    <rect x="72"  y="0"   width="16" height="32"/>
+    <!-- fuselage -->
+    <rect x="64"  y="32"  width="32" height="96"/>
+    <!-- cockpit -->
+    <rect x="72"  y="48"  width="16" height="24" fill="#003355"/>
+    <!-- wings -->
+    <rect x="16"  y="64"  width="128" height="16"/>
+    <rect x="0"   y="80"  width="32"  height="16"/>
+    <rect x="128" y="80"  width="32"  height="16"/>
+    <!-- tail -->
+    <rect x="48"  y="128" width="64"  height="16"/>
+    <!-- exhaust -->
+    <rect x="72"  y="144" width="16" height="16" fill="#ff8800"/>
+    <rect x="76"  y="160" width="8"  height="12" fill="#ffcc44"/>
+  </g>
+  <!-- Title -->
+  <g fill="#ffff44" font-family="monospace" font-weight="bold">
+    <text x="256" y="460" font-size="56" text-anchor="middle">TIME PILOT</text>
+  </g>
+</svg>
