@@ -8,10 +8,10 @@
       "maxDuration": 10
     }
   },
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "source": "/(?!api/)",
+      "destination": "/index.html"
     }
   ]
 }
