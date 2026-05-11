@@ -4,6 +4,7 @@ import {
   SessionToken,
   submitScore,
   pushLocalScore,
+  startSession,
 } from '../net/leaderboard';
 
 interface GameOverData {
@@ -190,6 +191,11 @@ export class GameOverScene extends Phaser.Scene {
         playedAt: Date.now(),
       });
 
+      // Recover from startup race/network hiccups: if the session token
+      // was not obtained during gameplay, try once now before giving up.
+      if (!this.session) {
+        this.session = await startSession();
+      }
       if (!this.session) {
         this.statusText.setText('OFFLINE: SAVED LOCALLY');
         this.time.delayedCall(900, () => this.goToLeaderboard());

@@ -47,12 +47,26 @@ export class LeaderboardScene extends Phaser.Scene {
 
     const online = await fetchTopScores();
     loading.destroy();
-    if (online && online.length > 0) {
-      this.renderEntries(online, false);
+
+    // If online API responded, always treat it as authoritative.
+    // Empty list means there are simply no global scores yet.
+    if (online !== null) {
+      if (online.length > 0) {
+        this.renderEntries(online, false);
+      } else {
+        this.add
+          .text(cx, GAME_HEIGHT / 2, 'NO GLOBAL SCORES YET\nBE THE FIRST!', {
+            fontFamily: 'monospace',
+            fontSize: '10px',
+            color: '#888888',
+            align: 'center',
+          })
+          .setOrigin(0.5);
+      }
       return;
     }
 
-    // Fallback: local-only history.
+    // API unavailable: fall back to local-only history.
     const local = readLocalScores().map<LeaderboardEntry>((s, i) => ({
       rank: i + 1,
       name: s.name,
@@ -72,7 +86,7 @@ export class LeaderboardScene extends Phaser.Scene {
       this.renderEntries(local, true);
     } else {
       this.add
-        .text(cx, GAME_HEIGHT / 2, 'NO SCORES YET\nBE THE FIRST!', {
+        .text(cx, GAME_HEIGHT / 2, 'OFFLINE\nNO LOCAL SCORES YET', {
           fontFamily: 'monospace',
           fontSize: '10px',
           color: '#888888',
