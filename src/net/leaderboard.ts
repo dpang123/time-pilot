@@ -52,7 +52,7 @@ export async function startSession(): Promise<SessionToken | null> {
 
 export async function fetchTopScores(): Promise<LeaderboardEntry[] | null> {
   try {
-    const res = await fetch(`${API_BASE}/api/scores`, { method: 'GET' });
+    const res = await fetch(`${API_BASE}/api/scores`, { method: 'GET', cache: 'no-store' });
     if (!res.ok) return null;
     const data = (await res.json()) as { entries?: LeaderboardEntry[] };
     return data.entries ?? [];

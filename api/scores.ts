@@ -160,9 +160,13 @@ async function handlePost(req: VercelRequest, res: VercelResponse) {
   await kv.hset(`entry:${id}`, entry);
   await kv.zadd(LEADERBOARD_KEY, { score: Math.floor(score), member: id });
 
-  // Trim leaderboard to the top 100 (lowest scores get evicted).
-  // ZREMRANGEBYRANK 0 -101 removes everything below rank 100.
-  await kv.zremrangebyrank(LEADERBOARD_KEY, 0, -101);
+  // Trim leaderboard to top 100 in a deterministic way.
+  // Keep the highest 100 scores; remove the lowest overflow count.
+  const size = (await kv.zcard(LEADERBOARD_KEY)) as number;
+  const overflow = size - 100;
+  if (overflow > 0) {
+    await kv.zremrangebyrank(LEADERBOARD_KEY, 0, overflow - 1);
+  }
 
   // Compute rank of the new entry.
   const rankFromTop = await kv.zrevrank(LEADERBOARD_KEY, id);
