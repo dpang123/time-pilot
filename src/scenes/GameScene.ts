@@ -219,14 +219,14 @@ export class GameScene extends Phaser.Scene {
     );
     this.player.setCollideWorldBounds(false).setDepth(50);
     if (this.modernMode) {
-      this.player.setScale(0.7);
+      this.player.setScale(0.44);
       this.player.setTint(0xd8f0ff);
       this.playerGlow = this.add
         .image(this.player.x, this.player.y, 'fxGlow')
         .setDepth(49)
         .setBlendMode(Phaser.BlendModes.ADD)
         .setAlpha(0.45)
-        .setScale(0.7);
+        .setScale(0.48);
     }
     (this.player.body as Phaser.Physics.Arcade.Body).setCircle(8, 0, 0);
     if (!this.modernMode) {
@@ -501,7 +501,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.modernMode && this.playerGlow) {
       this.playerGlow.setPosition(this.player.x, this.player.y);
-      this.playerGlow.setScale(0.68 + Math.sin(now / 120) * 0.04);
+      this.playerGlow.setScale(0.46 + Math.sin(now / 120) * 0.03);
       this.playerGlow.setAlpha(0.42 + Math.sin(now / 160) * 0.08);
     }
 
@@ -682,7 +682,7 @@ export class GameScene extends Phaser.Scene {
     const e = this.enemies.create(x, y, this.currentEnemyKey, 0) as EnemySprite;
     e.setActive(true).setVisible(true).setDepth(40);
     if (this.modernMode) {
-      e.setScale(0.62);
+      e.setScale(0.4);
       e.setTint(0xe7f5ff);
     }
     (e.body as Phaser.Physics.Arcade.Body).setCircle(7, 0, 0);
@@ -712,6 +712,7 @@ export class GameScene extends Phaser.Scene {
 
     // Spawn the mothership near the top of the screen, cruising sideways.
     const m = this.physics.add.image(GAME_WIDTH / 2, 28, this.currentMotherKey) as MothershipSprite;
+    if (this.modernMode) m.setScale(0.43);
     m.hp = this.era.motherHp;
     m.cruiseVx = this.era.motherSpeed * (Math.random() < 0.5 ? -1 : 1);
     m.cruiseVy = this.era.motherSpeed * 0.25;
@@ -730,7 +731,7 @@ export class GameScene extends Phaser.Scene {
   private spawnPilot(x: number, y: number): void {
     const p = this.pilots.create(x, y, this.modernMode ? 'modernPilot' : 'pilot') as Pilot;
     p.setActive(true).setVisible(true).setDepth(30);
-    if (this.modernMode) p.setScale(0.66);
+    if (this.modernMode) p.setScale(0.48);
     (p.body as Phaser.Physics.Arcade.Body).setCircle(5, 0, 0);
     p.bornAt = this.time.now;
   }
