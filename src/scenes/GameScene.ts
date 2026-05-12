@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../main';
 import { angleToFrame } from '../gfx/pixelArt';
 import { shouldShowTouchControls } from '../config/screen';
+import { getGraphicsMode } from '../config/graphics';
 import { createVirtualControls, VirtualControls } from '../input/VirtualControls';
 import { ERAS, EraConfig, eraForLoop } from '../eras/eraConfig';
 import { synth } from '../audio/synth';
@@ -48,6 +49,23 @@ interface EnemySprite extends Phaser.Physics.Arcade.Image {
   lastShotAt: number;
 }
 
+interface ModernGrade {
+  multiplyColor: number;
+  multiplyAlpha: number;
+  addColor: number;
+  addAlpha: number;
+  tintColor: number;
+  tintAlpha: number;
+  pulseAmplitude: number;
+}
+
+interface ModernCameraProfile {
+  hitShakeScale: number;
+  motherShakeScale: number;
+  playerShakeScale: number;
+  bossZoom: number;
+}
+
 export class GameScene extends Phaser.Scene {
   // Era state
   private eraIndex = 0;
@@ -73,6 +91,20 @@ export class GameScene extends Phaser.Scene {
 
   // Background
   private clouds: Phaser.GameObjects.Image[] = [];
+  private modernBackdrop: Phaser.GameObjects.Rectangle[] = [];
+  private modernNebula: Phaser.GameObjects.Ellipse[] = [];
+  private modernLightBands: Phaser.GameObjects.Rectangle[] = [];
+  private speedLines: Phaser.GameObjects.Rectangle[] = [];
+  private playerGlow: Phaser.GameObjects.Image | null = null;
+  private modernHudGlow: Phaser.GameObjects.Rectangle | null = null;
+  private modernHudBottomGlow: Phaser.GameObjects.Rectangle | null = null;
+  private cinematicFlash: Phaser.GameObjects.Rectangle | null = null;
+  private modernGradeMultiply: Phaser.GameObjects.Rectangle | null = null;
+  private modernGradeAdd: Phaser.GameObjects.Rectangle | null = null;
+  private modernGradeTint: Phaser.GameObjects.Rectangle | null = null;
+  private cinematicBarTop: Phaser.GameObjects.Rectangle | null = null;
+  private cinematicBarBottom: Phaser.GameObjects.Rectangle | null = null;
+  private modernMotes: Phaser.GameObjects.Image[] = [];
 
   // Run stats
   private score = 0;
@@ -97,11 +129,43 @@ export class GameScene extends Phaser.Scene {
   private session: SessionToken | null = null;
   private runStartedAt = 0;
 
+  private modernMode = false;
+  private lastTrailAt = 0;
+  private engineTrailTint = 0x8cefff;
+  private playerShotTint = 0xb7ffff;
+  private enemyShotTint = 0xff9f9f;
+  private muzzleFlashTint = 0x8cefff;
+  private hitFlashTint = 0x8ecfff;
+  private debrisTint = 0xa3daff;
+  private motherHitTint = 0xffb89a;
+  private muzzleFlashMs = 80;
+  private hitFlashMs = 70;
+  private motherHitFlashMs = 90;
+  private explosionBloomTint = 0xaedfff;
+  private explosionBloomMs = 220;
+  private gradeAddBaseAlpha = 0.055;
+  private gradePulseAmplitude = 0.012;
+  private hitShakeScale = 1;
+  private motherShakeScale = 1;
+  private playerShakeScale = 1;
+  private bossZoom = 1.03;
+
+  private currentEnemyKey = '';
+  private currentMotherKey = '';
+
   constructor() {
     super({ key: 'GameScene' });
   }
 
   create(): void {
+    this.modernMode = getGraphicsMode() === 'modern';
+    if (this.modernMode && !this.textures.exists('fxGlow')) {
+      this.createGlowTexture('fxGlow', '#8cecff', 96);
+    }
+    if (this.modernMode && !this.textures.exists('fxRing')) {
+      this.createRingTexture('fxRing', '#9edfff', 128);
+    }
+
     // Reset run state.
     this.eraIndex = 0;
     this.loop = 0;
@@ -116,27 +180,60 @@ export class GameScene extends Phaser.Scene {
     this.mothershipDefeated = false;
     this.transitioning = false;
     this.kills = 0;
+    this.lastTrailAt = 0;
+
+    if (this.modernMode) {
+      this.applyModernSmoothing();
+      this.createModernBackdrop();
+      this.createSpeedLines();
+      this.createModernGradeOverlays();
+      this.createCinematicBars();
+      this.cinematicFlash = this.add
+        .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x77d9ff, 0)
+        .setDepth(2500)
+        .setBlendMode(Phaser.BlendModes.ADD);
+    }
 
     // Build clouds (re-tinted per era).
     this.clouds = [];
+    const cloudKey = this.modernMode ? 'modernCloud' : 'cloud';
     for (let i = 0; i < 14; i++) {
       const c = this.add.image(
         Phaser.Math.Between(0, GAME_WIDTH),
         Phaser.Math.Between(0, GAME_HEIGHT),
-        'cloud',
+        cloudKey,
       );
       const depth = Phaser.Math.FloatBetween(0.3, 1.0);
-      c.setScale(depth);
+      c.setScale(this.modernMode ? depth * 0.48 : depth);
       c.setAlpha(0.5 + depth * 0.3);
       c.setData('parallax', depth);
       this.clouds.push(c);
     }
 
     // Player jet — locked at screen centre with 8-frame heading sheet.
-    this.player = this.physics.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'player', 0);
+    this.player = this.physics.add.image(
+      GAME_WIDTH / 2,
+      GAME_HEIGHT / 2,
+      this.modernMode ? 'modernPlayer' : 'player',
+      0,
+    );
     this.player.setCollideWorldBounds(false).setDepth(50);
+    if (this.modernMode) {
+      this.player.setScale(0.7);
+      this.player.setTint(0xd8f0ff);
+      this.playerGlow = this.add
+        .image(this.player.x, this.player.y, 'fxGlow')
+        .setDepth(49)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setAlpha(0.45)
+        .setScale(0.7);
+    }
     (this.player.body as Phaser.Physics.Arcade.Body).setCircle(8, 0, 0);
-    this.player.setFrame(angleToFrame(this.playerAngle));
+    if (!this.modernMode) {
+      this.player.setFrame(angleToFrame(this.playerAngle));
+    } else {
+      this.player.setRotation(this.playerAngle + Math.PI / 2);
+    }
 
     // Groups.
     this.bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 32 });
@@ -189,6 +286,29 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0, 1)
       .setDepth(1000);
 
+    if (this.modernMode) {
+      this.scoreText.setFontFamily('Trebuchet MS').setFontSize('11px');
+      this.livesText.setFontFamily('Trebuchet MS').setFontSize('11px');
+      this.eraText.setFontFamily('Trebuchet MS').setFontSize('11px');
+      this.scoreText.setStyle({ fontStyle: 'bold' });
+      this.livesText.setStyle({ fontStyle: 'bold' });
+      this.eraText.setStyle({ fontStyle: 'bold' });
+      this.scoreText.setColor('#e6f4ff');
+      this.livesText.setColor('#e6f4ff');
+      this.eraText.setColor('#8cf0ff');
+      this.scoreText.setShadow(0, 0, '#58cfff', 6, true, true);
+      this.livesText.setShadow(0, 0, '#58cfff', 6, true, true);
+      this.eraText.setShadow(0, 0, '#58cfff', 8, true, true);
+      this.modernHudGlow = this.add
+        .rectangle(GAME_WIDTH / 2, 14, GAME_WIDTH - 8, 22, 0x2ea3ff, 0.1)
+        .setDepth(900)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      this.modernHudBottomGlow = this.add
+        .rectangle(GAME_WIDTH / 2, GAME_HEIGHT - 8, GAME_WIDTH - 8, 16, 0x2ea3ff, 0.09)
+        .setDepth(900)
+        .setBlendMode(Phaser.BlendModes.ADD);
+    }
+
     // Input.
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.fireKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
@@ -199,6 +319,20 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.touch?.destroy();
       this.spawnTimer?.remove(false);
+      this.playerGlow?.destroy();
+      this.modernHudGlow?.destroy();
+      this.modernHudBottomGlow?.destroy();
+      this.modernGradeMultiply?.destroy();
+      this.modernGradeAdd?.destroy();
+      this.modernGradeTint?.destroy();
+      this.cinematicBarTop?.destroy();
+      this.cinematicBarBottom?.destroy();
+      this.modernMotes.forEach((m) => m.destroy());
+      this.modernBackdrop.forEach((b) => b.destroy());
+      this.modernNebula.forEach((n) => n.destroy());
+      this.modernLightBands.forEach((b) => b.destroy());
+      this.speedLines.forEach((s) => s.destroy());
+      this.cinematicFlash?.destroy();
     });
 
     // Start the first era.
@@ -238,10 +372,41 @@ export class GameScene extends Phaser.Scene {
     this.mothershipSpawned = false;
     this.mothershipDefeated = false;
     this.transitioning = false;
+    this.currentEnemyKey = this.modernMode ? this.modernEnemyKey(index) : this.era.enemyKey;
+    this.currentMotherKey = this.modernMode ? this.modernMotherKey(index) : this.era.motherKey;
 
     // Apply era look.
     this.cameras.main.setBackgroundColor(this.era.skyColor);
     for (const c of this.clouds) c.setTint(this.era.cloudTint);
+    if (this.modernMode) {
+      const tint = this.era.skyColor;
+      this.modernBackdrop[0]?.setFillStyle(tint, 0.26);
+      this.modernBackdrop[1]?.setFillStyle(0x091324, 0.34);
+      this.modernLightBands.forEach((b, i) => {
+        b.setFillStyle(tint, i % 2 === 0 ? 0.085 : 0.06);
+      });
+      this.modernNebula.forEach((n, i) => {
+        n.setFillStyle(i % 2 === 0 ? tint : 0x57b7ff, i % 2 === 0 ? 0.18 : 0.12);
+      });
+      this.modernMotes.forEach((m) => {
+        m.setTint(this.modernMoteTint(index));
+      });
+      this.engineTrailTint = this.modernTrailTint(index);
+      this.playerShotTint = this.modernPlayerShotTint(index);
+      this.enemyShotTint = this.modernEnemyShotTint(index);
+      this.muzzleFlashTint = this.modernMuzzleFlashTint(index);
+      this.hitFlashTint = this.modernHitFlashTint(index);
+      this.debrisTint = this.modernDebrisTint(index);
+      this.motherHitTint = this.modernMotherHitTint(index);
+      this.explosionBloomTint = this.modernExplosionTint(index);
+      this.muzzleFlashMs = this.modernMuzzleFlashMs(index);
+      this.hitFlashMs = this.modernHitFlashMs(index);
+      this.motherHitFlashMs = this.modernMotherHitFlashMs(index);
+      this.explosionBloomMs = this.modernExplosionBloomMs(index);
+      this.applyModernGrade(index);
+      this.applyModernCameraProfile(index);
+      this.setBossCinematicMode(false);
+    }
 
     // Recreate spawn timer with era cadence.
     this.spawnTimer?.remove(false);
@@ -255,12 +420,16 @@ export class GameScene extends Phaser.Scene {
     this.eraText.setText(`YEAR ${this.era.label}${loop > 0 ? `  LOOP ${loop + 1}` : ''}`);
     const banner = this.add
       .text(GAME_WIDTH / 2, GAME_HEIGHT / 2, `YEAR  ${this.era.label}`, {
-        fontFamily: 'monospace',
-        fontSize: '24px',
-        color: '#ffff66',
+        fontFamily: this.modernMode ? 'Trebuchet MS' : 'monospace',
+        fontSize: this.modernMode ? '22px' : '24px',
+        color: this.modernMode ? '#9cefff' : '#ffff66',
       })
       .setOrigin(0.5)
       .setDepth(1500);
+    if (this.modernMode) {
+      banner.setStroke('#041220', 5);
+      banner.setShadow(0, 0, '#59d7ff', 12, true, true);
+    }
     this.tweens.add({
       targets: banner,
       alpha: { from: 1, to: 0 },
@@ -273,6 +442,7 @@ export class GameScene extends Phaser.Scene {
   private advanceEra(): void {
     if (this.transitioning) return;
     this.transitioning = true;
+    if (this.modernMode) this.setBossCinematicMode(false);
     // Stop spawning during the transition.
     this.spawnTimer?.remove(false);
     // Clear any leftover enemies / bullets / pilots from this era.
@@ -324,11 +494,33 @@ export class GameScene extends Phaser.Scene {
       gamepadFire =
         pad.buttons.some((b, i) => i < 8 && b.pressed) || (pad.buttons[7]?.value ?? 0) > 0.3;
     }
-    this.player.setFrame(angleToFrame(this.playerAngle));
+    if (this.modernMode) {
+      this.player.setRotation(this.playerAngle + Math.PI / 2);
+    } else {
+      this.player.setFrame(angleToFrame(this.playerAngle));
+    }
+    if (this.modernMode && this.playerGlow) {
+      this.playerGlow.setPosition(this.player.x, this.player.y);
+      this.playerGlow.setScale(0.68 + Math.sin(now / 120) * 0.04);
+      this.playerGlow.setAlpha(0.42 + Math.sin(now / 160) * 0.08);
+    }
 
     // World scroll velocity (opposite of player heading).
     const vx = -Math.cos(this.playerAngle) * PLAYER_SPEED;
     const vy = -Math.sin(this.playerAngle) * PLAYER_SPEED;
+
+    if (this.modernMode && now - this.lastTrailAt > 45) {
+      this.spawnContrail();
+      this.lastTrailAt = now;
+    }
+    if (this.modernMode) {
+      this.updateSpeedLines(dt);
+      this.updateModernMotes(dt, vx, vy, now);
+      if (this.modernGradeAdd) {
+        this.modernGradeAdd.alpha =
+          this.gradeAddBaseAlpha + Math.sin(now / 320 + this.eraIndex * 0.8) * this.gradePulseAmplitude;
+      }
+    }
 
     // Parallax clouds.
     for (const c of this.clouds) {
@@ -348,7 +540,11 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       const angleToPlayer = Phaser.Math.Angle.Between(e.x, e.y, this.player.x, this.player.y);
-      e.setFrame(angleToFrame(angleToPlayer));
+      if (this.modernMode) {
+        e.setRotation(angleToPlayer + Math.PI / 2);
+      } else {
+        e.setFrame(angleToFrame(angleToPlayer));
+      }
       const body = e.body as Phaser.Physics.Arcade.Body;
       body.setVelocity(
         Math.cos(angleToPlayer) * this.era.enemySpeed,
@@ -448,6 +644,7 @@ export class GameScene extends Phaser.Scene {
     if (wantFire && now - this.lastFireAt > FIRE_RATE_MS) {
       this.fireBullet();
       synth.play('fire');
+      if (this.modernMode) this.pulseFlash(this.muzzleFlashTint, 0.06, this.muzzleFlashMs);
       this.lastFireAt = now;
     }
 
@@ -482,8 +679,12 @@ export class GameScene extends Phaser.Scene {
       case 2: x = Phaser.Math.Between(0, GAME_WIDTH); y = GAME_HEIGHT + 16; break;
       case 3: x = -16; y = Phaser.Math.Between(0, GAME_HEIGHT); break;
     }
-    const e = this.enemies.create(x, y, this.era.enemyKey, 0) as EnemySprite;
+    const e = this.enemies.create(x, y, this.currentEnemyKey, 0) as EnemySprite;
     e.setActive(true).setVisible(true).setDepth(40);
+    if (this.modernMode) {
+      e.setScale(0.62);
+      e.setTint(0xe7f5ff);
+    }
     (e.body as Phaser.Physics.Arcade.Body).setCircle(7, 0, 0);
     e.spawnAt = this.time.now;
     e.lastShotAt = this.time.now;
@@ -491,6 +692,7 @@ export class GameScene extends Phaser.Scene {
 
   private spawnMothership(): void {
     this.mothershipSpawned = true;
+    if (this.modernMode) this.setBossCinematicMode(true);
     synth.play('motherWarn');
     // Warning flash.
     const warn = this.add
@@ -509,7 +711,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Spawn the mothership near the top of the screen, cruising sideways.
-    const m = this.physics.add.image(GAME_WIDTH / 2, 28, this.era.motherKey) as MothershipSprite;
+    const m = this.physics.add.image(GAME_WIDTH / 2, 28, this.currentMotherKey) as MothershipSprite;
     m.hp = this.era.motherHp;
     m.cruiseVx = this.era.motherSpeed * (Math.random() < 0.5 ? -1 : 1);
     m.cruiseVy = this.era.motherSpeed * 0.25;
@@ -526,14 +728,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnPilot(x: number, y: number): void {
-    const p = this.pilots.create(x, y, 'pilot') as Pilot;
+    const p = this.pilots.create(x, y, this.modernMode ? 'modernPilot' : 'pilot') as Pilot;
     p.setActive(true).setVisible(true).setDepth(30);
+    if (this.modernMode) p.setScale(0.66);
     (p.body as Phaser.Physics.Arcade.Body).setCircle(5, 0, 0);
     p.bornAt = this.time.now;
   }
 
   private fireBullet(): void {
-    const b = this.bullets.get(this.player.x, this.player.y, 'bullet') as Bullet | null;
+    const b = this.bullets.get(
+      this.player.x,
+      this.player.y,
+      this.modernMode ? 'modernBullet' : 'bullet',
+    ) as Bullet | null;
     if (!b) return;
     b.setActive(true).setVisible(true).setDepth(60);
     if (!b.body) this.physics.add.existing(b);
@@ -543,17 +750,42 @@ export class GameScene extends Phaser.Scene {
       Math.cos(this.playerAngle) * BULLET_SPEED,
       Math.sin(this.playerAngle) * BULLET_SPEED,
     );
+    if (this.modernMode) {
+      b.setScale(1.2).setTint(0xb7ffff);
+      const flash = this.add
+        .image(this.player.x, this.player.y, 'fxGlow')
+        .setDepth(59)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setTint(this.muzzleFlashTint)
+        .setAlpha(0.35)
+        .setScale(0.22);
+      this.tweens.add({
+        targets: flash,
+        alpha: 0,
+        scale: 0.34,
+        duration: this.muzzleFlashMs + 40,
+        onComplete: () => flash.destroy(),
+      });
+      b.setTint(this.playerShotTint);
+    }
     b.bornAt = this.time.now;
   }
 
   private fireEnemyShot(x: number, y: number, angle: number): void {
-    const b = this.enemyBullets.get(x, y, 'enemyBullet') as Bullet | null;
+    const b = this.enemyBullets.get(
+      x,
+      y,
+      this.modernMode ? 'modernEnemyBullet' : 'enemyBullet',
+    ) as Bullet | null;
     if (!b) return;
     b.setActive(true).setVisible(true).setDepth(55);
     if (!b.body) this.physics.add.existing(b);
     const body = b.body as Phaser.Physics.Arcade.Body;
     body.reset(x, y);
     body.setVelocity(Math.cos(angle) * ENEMY_BULLET_SPEED, Math.sin(angle) * ENEMY_BULLET_SPEED);
+    if (this.modernMode) {
+      b.setTint(this.enemyShotTint).setScale(1.1);
+    }
     b.bornAt = this.time.now;
     synth.play('enemyFire');
   }
@@ -570,7 +802,13 @@ export class GameScene extends Phaser.Scene {
     b.destroy();
     this.addScore(SCORE_ENEMY);
     this.kills += 1;
-    this.cameras.main.shake(80, 0.003);
+    if (this.modernMode) {
+      this.spawnDebris(ex, ey, this.debrisTint);
+      this.spawnShockwave(ex, ey, this.hitFlashTint, 0.08, 0.34, 180);
+      this.spawnHitSparks(ex, ey, this.hitFlashTint, 3);
+      this.pulseFlash(this.hitFlashTint, 0.04, this.hitFlashMs);
+    }
+    this.cameras.main.shake(80, 0.003 * this.hitShakeScale);
     synth.play('enemyExplode');
     if (Math.random() < PILOT_SPAWN_CHANCE) {
       this.spawnPilot(ex, ey);
@@ -589,8 +827,14 @@ export class GameScene extends Phaser.Scene {
       this.mothership.x + Phaser.Math.Between(-this.mothership.width / 3, this.mothership.width / 3),
       this.mothership.y + Phaser.Math.Between(-this.mothership.height / 3, this.mothership.height / 3),
     );
+    if (this.modernMode) {
+      this.spawnDebris(this.mothership.x, this.mothership.y, this.motherHitTint);
+      this.spawnShockwave(this.mothership.x, this.mothership.y, this.motherHitTint, 0.12, 0.46, 240);
+      this.spawnHitSparks(this.mothership.x, this.mothership.y, this.motherHitTint, 4);
+      this.pulseFlash(this.motherHitTint, 0.05, this.motherHitFlashMs);
+    }
     this.mothership.hp -= 1;
-    this.cameras.main.shake(60, 0.002);
+    this.cameras.main.shake(60, 0.002 * this.motherShakeScale);
     synth.play('motherHit');
     if (this.mothership.hp <= 0) {
       const mx = this.mothership.x;
@@ -601,7 +845,11 @@ export class GameScene extends Phaser.Scene {
         const dy = Phaser.Math.Between(-12, 12);
         this.time.delayedCall(i * 90, () => this.spawnExplosion(mx + dx, my + dy));
       }
-      this.cameras.main.shake(500, 0.015);
+      if (this.modernMode) {
+        this.spawnShockwave(mx, my, this.modernExplosionTint(this.eraIndex), 0.22, 1.1, 520);
+        this.setBossCinematicMode(false);
+      }
+      this.cameras.main.shake(500, 0.015 * this.motherShakeScale);
       this.mothership.destroy();
       this.mothership = null;
       this.mothershipDefeated = true;
@@ -617,12 +865,16 @@ export class GameScene extends Phaser.Scene {
     synth.play('pilot');
     const t = this.add
       .text(this.player.x, this.player.y - 14, `+${SCORE_PILOT}`, {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#55ff55',
+        fontFamily: this.modernMode ? 'Trebuchet MS' : 'monospace',
+        fontSize: this.modernMode ? '10px' : '8px',
+        color: this.modernMode ? '#a8ffe7' : '#55ff55',
       })
       .setOrigin(0.5)
       .setDepth(1000);
+    if (this.modernMode) {
+      t.setStroke('#03302a', 3);
+      t.setShadow(0, 0, '#5bffd4', 8, true, true);
+    }
     this.tweens.add({
       targets: t,
       y: t.y - 12,
@@ -635,7 +887,12 @@ export class GameScene extends Phaser.Scene {
   private onPlayerHit(_obj: Phaser.Physics.Arcade.Image): void {
     if (this.time.now < this.invulnUntil) return;
     this.spawnExplosion(this.player.x, this.player.y);
-    this.cameras.main.shake(200, 0.01);
+    if (this.modernMode) {
+      this.pulseFlash(0xff9d9d, 0.12, 150);
+      this.spawnShockwave(this.player.x, this.player.y, 0xff9d9d, 0.14, 0.64, 300);
+      this.spawnHitSparks(this.player.x, this.player.y, 0xffa8a8, 5);
+    }
+    this.cameras.main.shake(200, 0.01 * this.playerShakeScale);
     synth.play('playerExplode');
     this.lives -= 1;
     if (this.lives <= 0) {
@@ -688,7 +945,24 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnExplosion(x: number, y: number): void {
-    const sprite = this.add.image(x, y, 'explosion0').setDepth(70);
+    if (this.modernMode) {
+      const glow = this.add
+        .image(x, y, 'fxGlow')
+        .setDepth(68)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setTint(this.explosionBloomTint)
+        .setAlpha(0.5)
+        .setScale(0.18);
+      this.tweens.add({
+        targets: glow,
+        alpha: 0,
+        scale: 0.52,
+        duration: this.explosionBloomMs,
+        onComplete: () => glow.destroy(),
+      });
+    }
+    const baseExplosionKey = this.modernMode ? 'modernExplosion' : 'explosion';
+    const sprite = this.add.image(x, y, `${baseExplosionKey}0`).setDepth(70);
     let frame = 0;
     const ev = this.time.addEvent({
       delay: 60,
@@ -700,8 +974,690 @@ export class GameScene extends Phaser.Scene {
           ev.remove(false);
           return;
         }
-        sprite.setTexture(`explosion${frame}`);
+        sprite.setTexture(`${baseExplosionKey}${frame}`);
       },
     });
+  }
+
+  private createModernBackdrop(): void {
+    const sky = this.add
+      .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x17345a, 0.24)
+      .setDepth(-120);
+    const vignette = this.add
+      .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x050a14, 0.35)
+      .setDepth(-118)
+      .setBlendMode(Phaser.BlendModes.MULTIPLY);
+    this.modernBackdrop.push(sky, vignette);
+
+    for (let i = 0; i < 3; i++) {
+      const band = this.add
+        .rectangle(
+          Phaser.Math.Between(0, GAME_WIDTH),
+          Phaser.Math.Between(0, GAME_HEIGHT),
+          GAME_WIDTH * 1.3,
+          34,
+          0x57b7ff,
+          0.065,
+        )
+        .setDepth(-117)
+        .setAngle(-20 + i * 10)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: band,
+        x: band.x + Phaser.Math.Between(-120, 120),
+        y: band.y + Phaser.Math.Between(-40, 40),
+        alpha: { from: 0.02, to: 0.11 },
+        duration: 3400 + i * 450,
+        yoyo: true,
+        repeat: -1,
+      });
+      this.modernLightBands.push(band);
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const nebula = this.add
+        .ellipse(
+          Phaser.Math.Between(20, GAME_WIDTH - 20),
+          Phaser.Math.Between(10, GAME_HEIGHT - 10),
+          Phaser.Math.Between(90, 150),
+          Phaser.Math.Between(46, 82),
+          i % 2 === 0 ? 0x6dc9ff : 0x4f8dff,
+          0.14,
+        )
+        .setDepth(-119)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: nebula,
+        x: nebula.x + Phaser.Math.Between(-16, 16),
+        y: nebula.y + Phaser.Math.Between(-10, 10),
+        alpha: { from: 0.08, to: 0.2 },
+        duration: 2600 + i * 400,
+        yoyo: true,
+        repeat: -1,
+      });
+      this.modernNebula.push(nebula);
+    }
+
+    for (let i = 0; i < 34; i++) {
+      const mote = this.add
+        .image(
+          Phaser.Math.Between(-10, GAME_WIDTH + 10),
+          Phaser.Math.Between(-10, GAME_HEIGHT + 10),
+          'fxGlow',
+        )
+        .setDepth(-90)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setScale(0.03 + Math.random() * 0.03)
+        .setAlpha(0.04 + Math.random() * 0.07);
+      mote.setData('parallax', Phaser.Math.FloatBetween(0.12, 0.42));
+      mote.setData('twinkle', Phaser.Math.FloatBetween(0, Math.PI * 2));
+      mote.setData('drift', Phaser.Math.FloatBetween(2, 7));
+      this.modernMotes.push(mote);
+    }
+  }
+
+  private createSpeedLines(): void {
+    for (let i = 0; i < 20; i++) {
+      const line = this.add
+        .rectangle(
+          Phaser.Math.Between(0, GAME_WIDTH),
+          Phaser.Math.Between(0, GAME_HEIGHT),
+          Phaser.Math.Between(24, 60),
+          Phaser.Math.Between(1, 2),
+          0xdcf6ff,
+          Phaser.Math.FloatBetween(0.04, 0.14),
+        )
+        .setDepth(-80)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      line.setData('drift', Phaser.Math.FloatBetween(12, 28));
+      line.setData('phase', Phaser.Math.FloatBetween(0, Math.PI * 2));
+      line.rotation = Phaser.Math.FloatBetween(-0.08, 0.08);
+      this.speedLines.push(line);
+    }
+  }
+
+  private createModernGradeOverlays(): void {
+    this.modernGradeMultiply = this.add
+      .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0c1320, 0)
+      .setDepth(280)
+      .setBlendMode(Phaser.BlendModes.MULTIPLY)
+      .setScrollFactor(0);
+    this.modernGradeAdd = this.add
+      .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x6ec6ff, 0)
+      .setDepth(281)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScrollFactor(0);
+    this.modernGradeTint = this.add
+      .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x88d8ff, 0)
+      .setDepth(282)
+      .setScrollFactor(0);
+  }
+
+  private createCinematicBars(): void {
+    const barHeight = 20;
+    this.cinematicBarTop = this.add
+      .rectangle(GAME_WIDTH / 2, barHeight / 2, GAME_WIDTH, barHeight, 0x05070d, 0)
+      .setDepth(2400)
+      .setScrollFactor(0);
+    this.cinematicBarBottom = this.add
+      .rectangle(GAME_WIDTH / 2, GAME_HEIGHT - barHeight / 2, GAME_WIDTH, barHeight, 0x05070d, 0)
+      .setDepth(2400)
+      .setScrollFactor(0);
+  }
+
+  private setBossCinematicMode(active: boolean): void {
+    if (!this.modernMode) return;
+    const alpha = active ? 0.72 : 0.18;
+    if (this.cinematicBarTop) {
+      this.tweens.add({ targets: this.cinematicBarTop, alpha, duration: active ? 420 : 300 });
+    }
+    if (this.cinematicBarBottom) {
+      this.tweens.add({ targets: this.cinematicBarBottom, alpha, duration: active ? 420 : 300 });
+    }
+    this.tweens.add({
+      targets: this.cameras.main,
+      zoom: active ? this.bossZoom : 1,
+      duration: active ? 460 : 320,
+      ease: active ? 'Cubic.easeOut' : 'Quad.easeInOut',
+    });
+  }
+
+  private applyModernCameraProfile(eraIndex: number): void {
+    const p = this.modernCameraProfile(eraIndex);
+    this.hitShakeScale = p.hitShakeScale;
+    this.motherShakeScale = p.motherShakeScale;
+    this.playerShakeScale = p.playerShakeScale;
+    this.bossZoom = p.bossZoom;
+  }
+
+  private modernCameraProfile(eraIndex: number): ModernCameraProfile {
+    switch (eraIndex) {
+      case 0:
+        return { hitShakeScale: 0.9, motherShakeScale: 0.95, playerShakeScale: 0.9, bossZoom: 1.02 };
+      case 1:
+        return { hitShakeScale: 1.0, motherShakeScale: 1.0, playerShakeScale: 0.98, bossZoom: 1.023 };
+      case 2:
+        return { hitShakeScale: 1.06, motherShakeScale: 1.08, playerShakeScale: 1.03, bossZoom: 1.026 };
+      case 3:
+        return { hitShakeScale: 1.14, motherShakeScale: 1.16, playerShakeScale: 1.1, bossZoom: 1.03 };
+      default:
+        return { hitShakeScale: 1.22, motherShakeScale: 1.28, playerShakeScale: 1.16, bossZoom: 1.036 };
+    }
+  }
+
+  private applyModernGrade(eraIndex: number): void {
+    const g = this.modernGradeForEra(eraIndex);
+    this.gradeAddBaseAlpha = g.addAlpha;
+    this.gradePulseAmplitude = g.pulseAmplitude;
+
+    if (this.modernGradeMultiply) {
+      this.modernGradeMultiply.setFillStyle(g.multiplyColor, g.multiplyAlpha);
+      this.tweens.add({
+        targets: this.modernGradeMultiply,
+        alpha: g.multiplyAlpha,
+        duration: 500,
+      });
+    }
+    if (this.modernGradeAdd) {
+      this.modernGradeAdd.setFillStyle(g.addColor, g.addAlpha);
+      this.tweens.add({
+        targets: this.modernGradeAdd,
+        alpha: g.addAlpha,
+        duration: 500,
+      });
+    }
+    if (this.modernGradeTint) {
+      this.modernGradeTint.setFillStyle(g.tintColor, g.tintAlpha);
+      this.tweens.add({
+        targets: this.modernGradeTint,
+        alpha: g.tintAlpha,
+        duration: 500,
+      });
+    }
+  }
+
+  private modernGradeForEra(eraIndex: number): ModernGrade {
+    switch (eraIndex) {
+      case 0:
+        return {
+          multiplyColor: 0x1b1f26,
+          multiplyAlpha: 0.08,
+          addColor: 0xffd9a6,
+          addAlpha: 0.042,
+          tintColor: 0xd9f0ff,
+          tintAlpha: 0.02,
+          pulseAmplitude: 0.008,
+        };
+      case 1:
+        return {
+          multiplyColor: 0x121c29,
+          multiplyAlpha: 0.085,
+          addColor: 0x7fd3ff,
+          addAlpha: 0.055,
+          tintColor: 0x8fd7ff,
+          tintAlpha: 0.024,
+          pulseAmplitude: 0.011,
+        };
+      case 2:
+        return {
+          multiplyColor: 0x18251d,
+          multiplyAlpha: 0.095,
+          addColor: 0xa4ffb8,
+          addAlpha: 0.05,
+          tintColor: 0x8fcfa0,
+          tintAlpha: 0.022,
+          pulseAmplitude: 0.012,
+        };
+      case 3:
+        return {
+          multiplyColor: 0x111a30,
+          multiplyAlpha: 0.11,
+          addColor: 0x9ab9ff,
+          addAlpha: 0.056,
+          tintColor: 0x93a4ff,
+          tintAlpha: 0.024,
+          pulseAmplitude: 0.013,
+        };
+      default:
+        return {
+          multiplyColor: 0x0b1024,
+          multiplyAlpha: 0.13,
+          addColor: 0x7ed8ff,
+          addAlpha: 0.07,
+          tintColor: 0x89a8ff,
+          tintAlpha: 0.03,
+          pulseAmplitude: 0.015,
+        };
+    }
+  }
+
+  private updateSpeedLines(dt: number): void {
+    for (const l of this.speedLines) {
+      const speed = l.getData('drift') as number;
+      const phase = l.getData('phase') as number;
+      // Cinematic wind streaks: gentle constant movement, independent of ship rotation.
+      l.y += speed * dt;
+      l.x += Math.sin(this.time.now / 1000 + phase) * dt * 5;
+      if (l.y > GAME_HEIGHT + 16) {
+        l.y = -16;
+        l.x = Phaser.Math.Between(-8, GAME_WIDTH + 8);
+      }
+      if (l.x < -24) l.x = GAME_WIDTH + 24;
+      if (l.x > GAME_WIDTH + 24) l.x = -24;
+    }
+  }
+
+  private applyModernSmoothing(): void {
+    this.cameras.main.roundPixels = false;
+    const keys = [
+      'player',
+      'enemy1910',
+      'enemy1940',
+      'enemy1970',
+      'enemy1982',
+      'enemy2001',
+      'mother1910',
+      'mother1940',
+      'mother1970',
+      'mother1982',
+      'mother2001',
+      'bullet',
+      'enemyBullet',
+      'cloud',
+      'pilot',
+      'fxGlow',
+      'modernCloud',
+      'modernPilot',
+      'modernExplosion0',
+      'modernExplosion1',
+      'modernExplosion2',
+      'modernExplosion3',
+    ];
+    for (const key of keys) {
+      const tex = this.textures.get(key);
+      if (tex) tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    }
+  }
+
+  private createGlowTexture(key: string, hexColor: string, size: number): void {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const g = ctx.createRadialGradient(size / 2, size / 2, 2, size / 2, size / 2, size / 2);
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.15, hexColor);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    this.textures.addCanvas(key, canvas);
+  }
+
+  private createRingTexture(key: string, hexColor: string, size: number): void {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const cx = size / 2;
+    const cy = size / 2;
+    const outer = size * 0.43;
+    const inner = size * 0.3;
+
+    const gradient = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    gradient.addColorStop(0, 'rgba(255,255,255,0.92)');
+    gradient.addColorStop(0.35, hexColor);
+    gradient.addColorStop(1, 'rgba(0,0,0,0)');
+
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = size * 0.08;
+    ctx.beginPath();
+    ctx.arc(cx, cy, size * 0.36, 0, Math.PI * 2);
+    ctx.stroke();
+
+    this.textures.addCanvas(key, canvas);
+  }
+
+  private spawnShockwave(
+    x: number,
+    y: number,
+    tint: number,
+    startScale: number,
+    endScale: number,
+    duration: number,
+  ): void {
+    if (!this.modernMode) return;
+    const ring = this.add
+      .image(x, y, 'fxRing')
+      .setDepth(67)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setTint(tint)
+      .setScale(startScale)
+      .setAlpha(0.45);
+    this.tweens.add({
+      targets: ring,
+      scale: endScale,
+      alpha: 0,
+      duration,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy(),
+    });
+  }
+
+  private spawnHitSparks(x: number, y: number, tint: number, count: number): void {
+    if (!this.modernMode) return;
+    for (let i = 0; i < count; i++) {
+      const a = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const dist = Phaser.Math.Between(10, 26);
+      const spark = this.add
+        .image(x, y, 'fxGlow')
+        .setDepth(69)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setTint(tint)
+        .setScale(0.05 + Math.random() * 0.03)
+        .setAlpha(0.32);
+      this.tweens.add({
+        targets: spark,
+        x: x + Math.cos(a) * dist,
+        y: y + Math.sin(a) * dist,
+        alpha: 0,
+        scale: spark.scale * 1.8,
+        duration: 170 + i * 24,
+        ease: 'Quad.easeOut',
+        onComplete: () => spark.destroy(),
+      });
+    }
+  }
+
+  private updateModernMotes(dt: number, vx: number, vy: number, now: number): void {
+    for (const m of this.modernMotes) {
+      const p = m.getData('parallax') as number;
+      const tw = m.getData('twinkle') as number;
+      const drift = m.getData('drift') as number;
+      m.x += vx * p * dt * 0.4 + Math.sin(now / 1300 + tw) * dt * drift;
+      m.y += vy * p * dt * 0.4 + Math.cos(now / 1600 + tw) * dt * (drift * 0.6);
+      this.wrapInPlayfield(m, 12);
+      m.alpha = 0.035 + (Math.sin(now / 480 + tw) * 0.5 + 0.5) * 0.09;
+    }
+  }
+
+  private spawnContrail(): void {
+    const tx = this.player.x - Math.cos(this.playerAngle) * 10;
+    const ty = this.player.y - Math.sin(this.playerAngle) * 10;
+    const p = this.add
+      .image(tx, ty, 'fxGlow')
+      .setDepth(35)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setTint(this.engineTrailTint)
+      .setAlpha(0.18)
+      .setScale(0.14 + Math.random() * 0.06);
+    this.tweens.add({
+      targets: p,
+      alpha: 0,
+      scale: p.scale * 1.9,
+      duration: 260,
+      onComplete: () => p.destroy(),
+    });
+  }
+
+  private pulseFlash(color: number, alpha: number, duration: number): void {
+    if (!this.cinematicFlash) return;
+    this.cinematicFlash.setFillStyle(color, alpha);
+    this.tweens.add({
+      targets: this.cinematicFlash,
+      alpha: 0,
+      duration,
+      ease: 'Quad.easeOut',
+    });
+  }
+
+  private spawnDebris(x: number, y: number, tint: number): void {
+    for (let i = 0; i < 4; i++) {
+      const d = this.add
+        .image(x, y, 'fxGlow')
+        .setDepth(66)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setTint(tint)
+        .setAlpha(0.26)
+        .setScale(0.08 + Math.random() * 0.05);
+      const tx = x + Phaser.Math.Between(-18, 18);
+      const ty = y + Phaser.Math.Between(-18, 18);
+      this.tweens.add({
+        targets: d,
+        x: tx,
+        y: ty,
+        alpha: 0,
+        scale: d.scale * 1.8,
+        duration: 180 + i * 35,
+        onComplete: () => d.destroy(),
+      });
+    }
+  }
+
+  private modernEnemyKey(eraIndex: number): string {
+    switch (eraIndex) {
+      case 0:
+        return 'modernEnemy1910';
+      case 1:
+        return 'modernEnemy1940';
+      case 2:
+        return 'modernEnemy1970';
+      case 3:
+        return 'modernEnemy1982';
+      default:
+        return 'modernEnemy2001';
+    }
+  }
+
+  private modernTrailTint(eraIndex: number): number {
+    switch (eraIndex) {
+      case 0:
+        return 0x9fe7ff;
+      case 1:
+        return 0x8cf6ff;
+      case 2:
+        return 0xb8ffba;
+      case 3:
+        return 0xb4c8ff;
+      default:
+        return 0x9eeeff;
+    }
+  }
+
+  private modernMoteTint(eraIndex: number): number {
+    switch (eraIndex) {
+      case 0:
+        return 0xffe6c4;
+      case 1:
+        return 0xbfe8ff;
+      case 2:
+        return 0xd7ffd4;
+      case 3:
+        return 0xd5dcff;
+      default:
+        return 0x9fd8ff;
+    }
+  }
+
+  private modernPlayerShotTint(eraIndex: number): number {
+    switch (eraIndex) {
+      case 0:
+        return 0xc8f7ff;
+      case 1:
+        return 0x8ff7ff;
+      case 2:
+        return 0xc8ffb8;
+      case 3:
+        return 0xc4d4ff;
+      default:
+        return 0xa4f8ff;
+    }
+  }
+
+  private modernEnemyShotTint(eraIndex: number): number {
+    switch (eraIndex) {
+      case 0:
+        return 0xffb489;
+      case 1:
+        return 0xff9fa2;
+      case 2:
+        return 0xffba90;
+      case 3:
+        return 0xff8f98;
+      default:
+        return 0xffb5ff;
+    }
+  }
+
+  private modernMuzzleFlashTint(eraIndex: number): number {
+    switch (eraIndex) {
+      case 0:
+        return 0xc6f0ff;
+      case 1:
+        return 0x95f6ff;
+      case 2:
+        return 0xa7ffcc;
+      case 3:
+        return 0xb8c8ff;
+      default:
+        return 0x99eeff;
+    }
+  }
+
+  private modernHitFlashTint(eraIndex: number): number {
+    switch (eraIndex) {
+      case 0:
+        return 0xc4e8ff;
+      case 1:
+        return 0x8ed9ff;
+      case 2:
+        return 0xa9ffc4;
+      case 3:
+        return 0x9db6ff;
+      default:
+        return 0x88e8ff;
+    }
+  }
+
+  private modernDebrisTint(eraIndex: number): number {
+    switch (eraIndex) {
+      case 0:
+        return 0xcde9ff;
+      case 1:
+        return 0xa3daff;
+      case 2:
+        return 0xb8ffc6;
+      case 3:
+        return 0xb6c2ff;
+      default:
+        return 0x98f5ff;
+    }
+  }
+
+  private modernMotherHitTint(eraIndex: number): number {
+    switch (eraIndex) {
+      case 0:
+        return 0xffd6a8;
+      case 1:
+        return 0xffb89a;
+      case 2:
+        return 0xffc6a6;
+      case 3:
+        return 0xffa6b6;
+      default:
+        return 0xd1b6ff;
+    }
+  }
+
+  private modernExplosionTint(eraIndex: number): number {
+    switch (eraIndex) {
+      case 0:
+        return 0xffddb0;
+      case 1:
+        return 0xffc48f;
+      case 2:
+        return 0xffd39f;
+      case 3:
+        return 0xffb8a8;
+      default:
+        return 0xbbe8ff;
+    }
+  }
+
+  private modernMuzzleFlashMs(eraIndex: number): number {
+    switch (eraIndex) {
+      case 0:
+        return 78;
+      case 1:
+        return 74;
+      case 2:
+        return 70;
+      case 3:
+        return 66;
+      default:
+        return 62;
+    }
+  }
+
+  private modernHitFlashMs(eraIndex: number): number {
+    switch (eraIndex) {
+      case 0:
+        return 78;
+      case 1:
+        return 72;
+      case 2:
+        return 68;
+      case 3:
+        return 64;
+      default:
+        return 60;
+    }
+  }
+
+  private modernMotherHitFlashMs(eraIndex: number): number {
+    switch (eraIndex) {
+      case 0:
+        return 100;
+      case 1:
+        return 94;
+      case 2:
+        return 90;
+      case 3:
+        return 86;
+      default:
+        return 82;
+    }
+  }
+
+  private modernExplosionBloomMs(eraIndex: number): number {
+    switch (eraIndex) {
+      case 0:
+        return 240;
+      case 1:
+        return 220;
+      case 2:
+        return 205;
+      case 3:
+        return 190;
+      default:
+        return 175;
+    }
+  }
+
+  private modernMotherKey(eraIndex: number): string {
+    switch (eraIndex) {
+      case 0:
+        return 'modernMother1910';
+      case 1:
+        return 'modernMother1940';
+      case 2:
+        return 'modernMother1970';
+      case 3:
+        return 'modernMother1982';
+      default:
+        return 'modernMother2001';
+    }
   }
 }

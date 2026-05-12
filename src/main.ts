@@ -7,20 +7,27 @@ import { GameOverScene } from './scenes/GameOverScene';
 import { LeaderboardScene } from './scenes/LeaderboardScene';
 import { PauseScene } from './scenes/PauseScene';
 import { getScreenSize } from './config/screen';
+import { getGraphicsMode } from './config/graphics';
 
 // Internal game resolution — chosen at boot from the user's saved screen mode.
 // Game logic reads these via the GAME_WIDTH / GAME_HEIGHT exports.
 const size = getScreenSize();
 export const GAME_WIDTH = size.width;
 export const GAME_HEIGHT = size.height;
+const graphicsMode = getGraphicsMode();
+const modern = graphicsMode === 'modern';
+
+if (typeof document !== 'undefined') {
+  document.body.classList.toggle('modern-graphics', modern);
+}
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO, // WebGL with Canvas fallback
   parent: 'game',
   backgroundColor: '#000000',
-  pixelArt: true,
-  roundPixels: true,
-  antialias: false,
+  pixelArt: !modern,
+  roundPixels: !modern,
+  antialias: modern,
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

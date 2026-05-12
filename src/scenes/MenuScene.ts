@@ -8,12 +8,14 @@ import {
   setTouchMode,
   TouchMode,
 } from '../config/screen';
+import { getGraphicsMode, setGraphicsMode, GraphicsMode } from '../config/graphics';
 import { synth } from '../audio/synth';
 
 export class MenuScene extends Phaser.Scene {
   private modeText!: Phaser.GameObjects.Text;
   private touchText!: Phaser.GameObjects.Text;
   private soundText!: Phaser.GameObjects.Text;
+  private graphicsText!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -21,44 +23,72 @@ export class MenuScene extends Phaser.Scene {
 
   create(): void {
     const cx = GAME_WIDTH / 2;
+    const graphicsMode = getGraphicsMode();
 
-    this.add
+    if (graphicsMode === 'modern') {
+      this.cameras.main.setBackgroundColor('#071325');
+      const g1 = this.add
+        .ellipse(GAME_WIDTH * 0.25, GAME_HEIGHT * 0.2, GAME_WIDTH * 0.9, GAME_HEIGHT * 0.45, 0x46c7ff, 0.18)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(-20);
+      const g2 = this.add
+        .ellipse(GAME_WIDTH * 0.78, GAME_HEIGHT * 0.72, GAME_WIDTH * 0.8, GAME_HEIGHT * 0.4, 0x5e7bff, 0.14)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(-20);
+      this.tweens.add({
+        targets: [g1, g2],
+        alpha: { from: 0.08, to: 0.24 },
+        duration: 2600,
+        yoyo: true,
+        repeat: -1,
+      });
+    }
+
+    const title = this.add
       .text(cx, GAME_HEIGHT * 0.18, 'TIME PILOT', {
-        fontFamily: 'monospace',
-        fontSize: '24px',
-        color: '#ffff00',
+        fontFamily: graphicsMode === 'modern' ? 'Trebuchet MS' : 'monospace',
+        fontSize: graphicsMode === 'modern' ? '28px' : '24px',
+        color: graphicsMode === 'modern' ? '#b9eeff' : '#ffff00',
       })
       .setOrigin(0.5);
+    if (graphicsMode === 'modern') {
+      title.setStroke('#061a30', 6);
+      title.setShadow(0, 0, '#56d5ff', 12, true, true);
+    }
 
     this.add
       .text(cx, GAME_HEIGHT * 0.18 + 22, '\u00A9 2026 ARCADE EDITION', {
-        fontFamily: 'monospace',
+        fontFamily: graphicsMode === 'modern' ? 'Trebuchet MS' : 'monospace',
         fontSize: '8px',
-        color: '#888888',
+        color: graphicsMode === 'modern' ? '#81b8d8' : '#888888',
       })
       .setOrigin(0.5);
 
     const startText = this.add
       .text(cx, GAME_HEIGHT * 0.45, 'PRESS SPACE OR TAP TO START', {
-        fontFamily: 'monospace',
-        fontSize: '10px',
+        fontFamily: graphicsMode === 'modern' ? 'Trebuchet MS' : 'monospace',
+        fontSize: graphicsMode === 'modern' ? '11px' : '10px',
         color: '#ffffff',
       })
       .setOrigin(0.5);
+    if (graphicsMode === 'modern') {
+      startText.setStroke('#092038', 4);
+      startText.setShadow(0, 0, '#68d8ff', 10, true, true);
+    }
 
     this.add
       .text(cx, GAME_HEIGHT * 0.45 + 22, 'ARROWS  ROTATE     SPACE  FIRE', {
-        fontFamily: 'monospace',
+        fontFamily: graphicsMode === 'modern' ? 'Trebuchet MS' : 'monospace',
         fontSize: '8px',
-        color: '#aaaaaa',
+        color: graphicsMode === 'modern' ? '#97b9d3' : '#aaaaaa',
       })
       .setOrigin(0.5);
 
     this.add
       .text(cx, GAME_HEIGHT * 0.45 + 34, 'TOUCH JOYSTICK ON MOBILE', {
-        fontFamily: 'monospace',
+        fontFamily: graphicsMode === 'modern' ? 'Trebuchet MS' : 'monospace',
         fontSize: '8px',
-        color: '#aaaaaa',
+        color: graphicsMode === 'modern' ? '#97b9d3' : '#aaaaaa',
       })
       .setOrigin(0.5);
 
@@ -123,6 +153,26 @@ export class MenuScene extends Phaser.Scene {
       this.toggleSound();
     });
 
+    // Graphics style selector (Classic / Modern Prestige).
+    this.graphicsText = this.add
+      .text(cx, GAME_HEIGHT - 88, this.formatGraphicsLabel(getGraphicsMode()), {
+        fontFamily: 'monospace',
+        fontSize: '10px',
+        color: '#7cd8ff',
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+
+    this.graphicsText.on('pointerdown', (
+      _p: Phaser.Input.Pointer,
+      _x: number,
+      _y: number,
+      e: Phaser.Types.Input.EventData,
+    ) => {
+      e.stopPropagation();
+      this.toggleGraphics();
+    });
+
     this.add
       .text(cx, GAME_HEIGHT - 14, 'L  LEADERBOARD', {
         fontFamily: 'monospace',
@@ -145,6 +195,7 @@ export class MenuScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-M', () => this.toggleMode());
     this.input.keyboard?.on('keydown-T', () => this.cycleTouch());
     this.input.keyboard?.on('keydown-S', () => this.toggleSound());
+    this.input.keyboard?.on('keydown-G', () => this.toggleGraphics());
     // Tap anywhere except the menu toggles starts the game.
     this.input.on(
       'pointerdown',
@@ -152,7 +203,8 @@ export class MenuScene extends Phaser.Scene {
         if (
           currentlyOver.includes(this.modeText) ||
           currentlyOver.includes(this.touchText) ||
-          currentlyOver.includes(this.soundText)
+          currentlyOver.includes(this.soundText) ||
+          currentlyOver.includes(this.graphicsText)
         ) {
           return;
         }
@@ -176,6 +228,10 @@ export class MenuScene extends Phaser.Scene {
 
   private formatSoundLabel(muted: boolean): string {
     return `SOUND  ${muted ? 'OFF' : 'ON '}  (TAP / S)`;
+  }
+
+  private formatGraphicsLabel(mode: GraphicsMode): string {
+    return `STYLE  ${mode === 'modern' ? 'MODERN PRESTIGE' : 'CLASSIC'}  (TAP / G)`;
   }
 
   private toggleSound(): void {
@@ -206,5 +262,21 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
     // Phaser must re-init at a different internal resolution → reload the page.
     this.time.delayedCall(150, () => window.location.reload());
+  }
+
+  private toggleGraphics(): void {
+    const next: GraphicsMode = getGraphicsMode() === 'modern' ? 'classic' : 'modern';
+    setGraphicsMode(next);
+    this.graphicsText.setText(this.formatGraphicsLabel(next));
+    this.add
+      .text(GAME_WIDTH / 2, GAME_HEIGHT - 98, 'SWITCHING STYLE...', {
+        fontFamily: 'monospace',
+        fontSize: '8px',
+        color: '#9cf7ff',
+      })
+      .setOrigin(0.5)
+      .setAlpha(0.9)
+      .setDepth(1200);
+    this.time.delayedCall(140, () => window.location.reload());
   }
 }

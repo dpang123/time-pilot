@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Time Pilot Visual Templates</title>
+  <style>
+    :root {
+      --bg-a: #091a2f;
+      --bg-b: #142b4a;
+      --ink: #f6f4ee;
+      --muted: #b8c7d9;
+      --panel: rgba(8, 16, 30, 0.72);
+      --line: rgba(255, 255, 255, 0.18);
+      --accent: #ff6a3d;
+      --ok: #31d19f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1200px 600px at 80% -10%, #36598e 0%, transparent 65%),
+        radial-gradient(900px 500px at -10% 20%, #24436f 0%, transparent 60%),
+        linear-gradient(150deg, var(--bg-a), var(--bg-b));
+      overflow-x: hidden;
+    }
+
+    .grain::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.08;
+      background-image: repeating-linear-gradient(0deg, rgba(255,255,255,0.5), rgba(255,255,255,0.5) 1px, transparent 1px, transparent 3px);
+      mix-blend-mode: soft-light;
+    }
+
+    .wrap {
+      width: min(1180px, 92vw);
+      margin: 24px auto 48px;
+    }
+
+    .header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: end;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 4.5vw, 54px);
+      line-height: 0.95;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      text-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 14px;
+      max-width: 640px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: rgba(12, 21, 38, 0.6);
+      color: var(--ink);
+      padding: 9px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+    }
+
+    button:hover { transform: translateY(-1px); }
+    button.active { border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.12); }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px;
+      background: var(--panel);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 22px 32px rgba(0, 0, 0, 0.26);
+      opacity: 0.7;
+      transform: scale(0.985);
+      transition: opacity 200ms ease, transform 200ms ease, border-color 200ms ease;
+    }
+
+    .card.show {
+      opacity: 1;
+      transform: scale(1);
+      border-color: rgba(255,255,255,0.34);
+    }
+
+    .title {
+      font-size: 15px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      margin-bottom: 6px;
+    }
+
+    .desc {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      min-height: 56px;
+    }
+
+    .chip {
+      display: inline-block;
+      margin-right: 6px;
+      margin-top: 8px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      border: 1px solid rgba(255,255,255,0.25);
+      color: #eef2f8;
+      background: rgba(255,255,255,0.08);
+    }
+
+    .viewport {
+      margin-top: 18px;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      height: min(56vh, 520px);
+      overflow: hidden;
+      position: relative;
+      box-shadow: inset 0 0 80px rgba(0,0,0,0.35), 0 26px 38px rgba(0,0,0,0.34);
+      isolation: isolate;
+    }
+
+    .hud {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      justify-content: space-between;
+      font-family: "Consolas", monospace;
+      font-weight: 700;
+      font-size: 13px;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.45);
+      z-index: 10;
+    }
+
+    .label-ok { color: var(--ok); }
+
+    .plane {
+      position: absolute;
+      left: 50%;
+      top: 54%;
+      width: 62px;
+      height: 62px;
+      transform: translate(-50%, -50%);
+      animation: float 2.6s ease-in-out infinite;
+      z-index: 4;
+    }
+
+    .plane::before,
+    .plane::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      clip-path: polygon(50% 0%, 86% 72%, 56% 62%, 50% 100%, 44% 62%, 14% 72%);
+    }
+
+    .plane::before { background: #ebf5ff; }
+    .plane::after {
+      inset: 6px;
+      background: linear-gradient(180deg, #ffd08a, #f26638);
+      filter: saturate(1.25);
+    }
+
+    .orb {
+      position: absolute;
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: #ffdb66;
+      box-shadow: 0 0 14px #ffd75e;
+      animation: shoot 1600ms linear infinite;
+      z-index: 3;
+    }
+
+    .cloud {
+      position: absolute;
+      width: 210px;
+      height: 70px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.2);
+      filter: blur(2px);
+      animation: drift 18s linear infinite;
+      opacity: 0.55;
+    }
+
+    .scan {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(180deg, transparent 0, transparent 2px, rgba(255,255,255,0.05) 3px);
+      mix-blend-mode: soft-light;
+      z-index: 8;
+    }
+
+    .note {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .modern {
+      background:
+        radial-gradient(900px 380px at 70% -20%, rgba(90, 202, 255, 0.55), transparent 65%),
+        radial-gradient(900px 520px at 0% 0%, rgba(94, 131, 255, 0.4), transparent 66%),
+        linear-gradient(170deg, #031322, #0a2441 58%, #183f66 100%);
+    }
+
+    .modern .plane::after { background: linear-gradient(180deg, #7cf2ff, #2f6dff); }
+    .modern .orb { background: #7cf2ff; box-shadow: 0 0 16px #7cf2ff; }
+
+    .classic {
+      background:
+        linear-gradient(180deg, #3764a5, #2b5d9f 40%, #4480ba 60%, #67a1c8 100%);
+      image-rendering: pixelated;
+    }
+
+    .classic .plane { filter: none; }
+    .classic .scan { opacity: 0.2; }
+
+    .anime {
+      background:
+        radial-gradient(1200px 400px at 50% 115%, rgba(255, 127, 99, 0.42), transparent 60%),
+        linear-gradient(180deg, #181e42 0%, #3e2f7d 38%, #ef5a42 100%);
+    }
+
+    .anime .plane::after { background: linear-gradient(180deg, #ffd66f, #ff5e57); }
+    .anime .orb { background: #ffd66f; box-shadow: 0 0 20px #ff944d; }
+
+    @keyframes float {
+      0%, 100% { transform: translate(-50%, -50%) rotate(-2deg); }
+      50% { transform: translate(-50%, -54%) rotate(2deg); }
+    }
+
+    @keyframes shoot {
+      0% { transform: translateY(0) scale(1); opacity: 1; }
+      100% { transform: translateY(-300px) scale(0.7); opacity: 0; }
+    }
+
+    @keyframes drift {
+      from { transform: translateX(120%); }
+      to { transform: translateX(-140%); }
+    }
+  </style>
+</head>
+<body class="grain">
+  <div class="wrap">
+    <div class="header">
+      <div>
+        <h1>Time Pilot<br/>Visual Templates</h1>
+        <div class="sub">Preview-only direction board for premium visual mode options. These are concept templates to choose art direction before implementation.</div>
+        <div class="toolbar">
+          <button class="active" data-mode="modern">Modern Prestige</button>
+          <button data-mode="classic">Classic Clean</button>
+          <button data-mode="anime">Neo Arcade</button>
+        </div>
+      </div>
+    </div>
+
+    <section class="cards">
+      <article class="card show" data-card="modern">
+        <div class="title">Modern Prestige</div>
+        <div class="desc">Cinematic atmosphere, cool neon highlights, premium HUD, deep sky gradients, glow-style effects and cleaner materials.</div>
+        <span class="chip">High readability</span>
+        <span class="chip">Tournament ready</span>
+        <span class="chip">Premium look</span>
+      </article>
+
+      <article class="card" data-card="classic">
+        <div class="title">Classic Clean</div>
+        <div class="desc">Faithful arcade identity with sharper framing, tuned palette, cleaner typography and improved contrast without losing retro soul.</div>
+        <span class="chip">Nostalgic</span>
+        <span class="chip">Low risk</span>
+        <span class="chip">Fastest rollout</span>
+      </article>
+
+      <article class="card" data-card="anime">
+        <div class="title">Neo Arcade</div>
+        <div class="desc">Stylized dramatic color language, bold impact flashes, high-speed energy, expressive transitions and strong signature mood.</div>
+        <span class="chip">High impact</span>
+        <span class="chip">Distinct brand</span>
+        <span class="chip">Most ambitious</span>
+      </article>
+    </section>
+
+    <section class="viewport modern" id="view">
+      <div class="hud">
+        <div>SCORE 0024500</div>
+        <div class="label-ok">MODE MODERN</div>
+        <div>ERA 1982</div>
+      </div>
+      <div class="cloud" style="top: 18%; animation-delay: -4s;"></div>
+      <div class="cloud" style="top: 52%; width: 280px; animation-delay: -11s;"></div>
+      <div class="plane"></div>
+      <div class="orb" style="left: 50%; top: 55%;"></div>
+      <div class="orb" style="left: 52%; top: 58%; animation-delay: -550ms;"></div>
+      <div class="orb" style="left: 48%; top: 59%; animation-delay: -950ms;"></div>
+      <div class="scan"></div>
+    </section>
+
+    <div class="note">Tip: click each button to compare directions. I can convert one selected style into a playable Modern mode implementation in the actual Phaser scenes.</div>
+  </div>
+
+  <script>
+    const view = document.getElementById('view');
+    const buttons = document.querySelectorAll('button[data-mode]');
+    const cards = document.querySelectorAll('.card');
+
+    function setMode(mode) {
+      view.classList.remove('modern', 'classic', 'anime');
+      view.classList.add(mode);
+
+      cards.forEach((card) => {
+        card.classList.toggle('show', card.dataset.card === mode);
+      });
+
+      buttons.forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+      });
+
+      const hudMode = document.querySelector('.label-ok');
+      if (hudMode) hudMode.textContent = `MODE ${mode.toUpperCase()}`;
+    }
+
+    buttons.forEach((btn) => {
+      btn.addEventListener('click', () => setMode(btn.dataset.mode));
+    });
+  </script>
+</body>
+</html>

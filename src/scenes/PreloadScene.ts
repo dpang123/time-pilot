@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../main';
 import { registerArcadeSprites } from '../gfx/arcadeSprites';
+import { registerModernSprites } from '../gfx/modernSprites';
 
 /**
  * PreloadScene generates all placeholder textures procedurally (no external
@@ -46,6 +47,8 @@ export class PreloadScene extends Phaser.Scene {
   create(): void {
     // Register every pixel-art sprite used by the game.
     registerArcadeSprites(this);
+    // Register higher-fidelity vector-style textures for Modern mode.
+    registerModernSprites(this);
     this.scene.start('MenuScene');
   }
 }
