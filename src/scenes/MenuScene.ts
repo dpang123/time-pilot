@@ -8,14 +8,13 @@ import {
   setTouchMode,
   TouchMode,
 } from '../config/screen';
-import { getGraphicsMode, setGraphicsMode, GraphicsMode } from '../config/graphics';
+import { getGraphicsMode, setGraphicsMode } from '../config/graphics';
 import { synth } from '../audio/synth';
 
 export class MenuScene extends Phaser.Scene {
   private modeText!: Phaser.GameObjects.Text;
   private touchText!: Phaser.GameObjects.Text;
   private soundText!: Phaser.GameObjects.Text;
-  private graphicsText!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -153,26 +152,6 @@ export class MenuScene extends Phaser.Scene {
       this.toggleSound();
     });
 
-    // Graphics style selector (Classic / Modern Prestige).
-    this.graphicsText = this.add
-      .text(cx, GAME_HEIGHT - 88, this.formatGraphicsLabel(getGraphicsMode()), {
-        fontFamily: 'monospace',
-        fontSize: '10px',
-        color: '#7cd8ff',
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
-
-    this.graphicsText.on('pointerdown', (
-      _p: Phaser.Input.Pointer,
-      _x: number,
-      _y: number,
-      e: Phaser.Types.Input.EventData,
-    ) => {
-      e.stopPropagation();
-      this.toggleGraphics();
-    });
-
     this.add
       .text(cx, GAME_HEIGHT - 14, 'L  LEADERBOARD', {
         fontFamily: 'monospace',
@@ -180,6 +159,9 @@ export class MenuScene extends Phaser.Scene {
         color: '#888888',
       })
       .setOrigin(0.5);
+
+    // Small marker for the hidden top-left activation area.
+    this.add.circle(10, 10, 2, 0xff2f2f, 0.95).setDepth(1200);
 
     // Blink "press start" text.
     this.tweens.add({
@@ -195,16 +177,19 @@ export class MenuScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-M', () => this.toggleMode());
     this.input.keyboard?.on('keydown-T', () => this.cycleTouch());
     this.input.keyboard?.on('keydown-S', () => this.toggleSound());
-    this.input.keyboard?.on('keydown-G', () => this.toggleGraphics());
+    this.input.keyboard?.on('keydown-Q', () => this.enableModernMode());
     // Tap anywhere except the menu toggles starts the game.
     this.input.on(
       'pointerdown',
-      (_p: Phaser.Input.Pointer, currentlyOver: Phaser.GameObjects.GameObject[]) => {
+      (p: Phaser.Input.Pointer, currentlyOver: Phaser.GameObjects.GameObject[]) => {
+        if (p.x < 80 && p.y < 80) {
+          this.enableModernMode();
+          return;
+        }
         if (
           currentlyOver.includes(this.modeText) ||
           currentlyOver.includes(this.touchText) ||
-          currentlyOver.includes(this.soundText) ||
-          currentlyOver.includes(this.graphicsText)
+          currentlyOver.includes(this.soundText)
         ) {
           return;
         }
@@ -228,10 +213,6 @@ export class MenuScene extends Phaser.Scene {
 
   private formatSoundLabel(muted: boolean): string {
     return `SOUND  ${muted ? 'OFF' : 'ON '}  (TAP / S)`;
-  }
-
-  private formatGraphicsLabel(mode: GraphicsMode): string {
-    return `STYLE  ${mode === 'modern' ? 'MODERN PRESTIGE' : 'CLASSIC'}  (TAP / G)`;
   }
 
   private toggleSound(): void {
@@ -264,12 +245,11 @@ export class MenuScene extends Phaser.Scene {
     this.time.delayedCall(150, () => window.location.reload());
   }
 
-  private toggleGraphics(): void {
-    const next: GraphicsMode = getGraphicsMode() === 'modern' ? 'classic' : 'modern';
-    setGraphicsMode(next);
-    this.graphicsText.setText(this.formatGraphicsLabel(next));
+  private enableModernMode(): void {
+    if (getGraphicsMode() === 'modern') return;
+    setGraphicsMode('modern');
     this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT - 98, 'SWITCHING STYLE...', {
+      .text(GAME_WIDTH / 2, GAME_HEIGHT - 98, 'MODERN MODE ENABLED...', {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#9cf7ff',

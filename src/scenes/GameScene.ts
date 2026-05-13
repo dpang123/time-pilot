@@ -362,6 +362,9 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
+    // Small marker for the hidden top-left activation area.
+    this.add.circle(10, 10, 2, 0xff2f2f, 0.95).setScrollFactor(0).setDepth(1200);
+
     // Kick off a leaderboard session in the background. If the API isn't
     // reachable (offline / dev without `vercel dev`) we just won't be able
     // to submit — game still plays normally.
