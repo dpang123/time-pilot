@@ -9,7 +9,7 @@ export function getGraphicsMode(): GraphicsMode {
   } catch {
     // ignore storage errors
   }
-  return 'modern';
+  return 'classic';
 }
 
 export function setGraphicsMode(mode: GraphicsMode): void {

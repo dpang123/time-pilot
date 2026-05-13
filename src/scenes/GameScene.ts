@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../main';
 import { angleToFrame } from '../gfx/pixelArt';
 import { shouldShowTouchControls } from '../config/screen';
-import { getGraphicsMode } from '../config/graphics';
+import { getGraphicsMode, setGraphicsMode } from '../config/graphics';
 import { createVirtualControls, VirtualControls } from '../input/VirtualControls';
 import { ERAS, EraConfig, eraForLoop } from '../eras/eraConfig';
 import { synth } from '../audio/synth';
@@ -350,6 +350,17 @@ export class GameScene extends Phaser.Scene {
     };
     this.input.keyboard?.on('keydown-P', tryPause);
     this.input.keyboard?.on('keydown-ESC', tryPause);
+
+    // Hidden function: Enable modern mode (Q key or top-left touch).
+    this.input.keyboard?.on('keydown-Q', () => this.enableModernMode());
+    
+    // Top-left corner touch detection for modern mode.
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      const cornerSize = 80; // 80x80px corner area
+      if (pointer.x < cornerSize && pointer.y < cornerSize) {
+        this.enableModernMode();
+      }
+    });
 
     // Kick off a leaderboard session in the background. If the API isn't
     // reachable (offline / dev without `vercel dev`) we just won't be able
@@ -1660,5 +1671,16 @@ export class GameScene extends Phaser.Scene {
       default:
         return 'modernMother2001';
     }
+  }
+
+  private enableModernMode(): void {
+    // If already in modern mode, do nothing.
+    if (this.modernMode) return;
+    
+    // Enable modern mode and save to localStorage.
+    setGraphicsMode('modern');
+    
+    // Reload the page to apply the new graphics mode.
+    location.reload();
   }
 }
