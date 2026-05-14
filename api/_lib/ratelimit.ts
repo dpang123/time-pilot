@@ -2,10 +2,10 @@ import { kv } from './kv';
 
 /**
  * Sliding-window rate limit using Vercel KV.
- * Limit: max 5 score submissions per IP per hour.
+ * Limit: max 30 score submissions per IP per hour.
  */
 const WINDOW_MS = 60 * 60 * 1000;
-const MAX_PER_WINDOW = 5;
+const MAX_PER_WINDOW = 30;
 
 export interface RateLimitResult {
   allowed: boolean;

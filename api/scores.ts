@@ -99,11 +99,6 @@ async function handlePost(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: 'Session expired' });
   }
 
-  // Reject session-replay: only one submission per sessionId.
-  const usedKey = `session-used:${sessionId}`;
-  const newlySet = await kv.set(usedKey, 1, { nx: true, ex: 6 * 60 * 60 });
-  if (newlySet !== 'OK') return res.status(409).json({ error: 'Session already used' });
-
   // ---- Field validation ----
   if (!isValidName(name)) return res.status(400).json({ error: 'Invalid name' });
   if (!Number.isFinite(score) || score < 0 || score > 99_999_999) {
@@ -131,6 +126,13 @@ async function handlePost(req: VercelRequest, res: VercelResponse) {
     cleanEmail = email.trim();
   }
 
+  // Fast path for duplicate submits from the same completed run.
+  // Do this before IP rate limiting so retries/click-spam on one run do not
+  // consume the sender's hourly quota.
+  const usedKey = `session-used:${sessionId}`;
+  const alreadyUsed = await kv.get(usedKey);
+  if (alreadyUsed) return res.status(409).json({ error: 'Session already used' });
+
   // ---- Rate limit per IP ----
   const ip =
     (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
@@ -143,6 +145,12 @@ async function handlePost(req: VercelRequest, res: VercelResponse) {
       .status(429)
       .json({ error: 'Too many submissions. Try again later.', resetAt: limit.resetAt });
   }
+
+  // Reject session-replay: only one submission per sessionId.
+  // This is intentionally after validation and rate-limiting so a blocked
+  // attempt does not burn a legitimate finished run.
+  const newlySet = await kv.set(usedKey, 1, { nx: true, ex: 6 * 60 * 60 });
+  if (newlySet !== 'OK') return res.status(409).json({ error: 'Session already used' });
 
   // ---- Persist ----
   const id = randomUUID();
